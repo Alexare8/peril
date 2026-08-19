@@ -3,8 +3,6 @@ package main
 import (
 	"fmt"
 	"log"
-	"os"
-	"os/signal"
 
 	"github.com/bootdotdev/learn-pub-sub-starter/internal/gamelogic"
 	"github.com/bootdotdev/learn-pub-sub-starter/internal/pubsub"
@@ -13,6 +11,7 @@ import (
 )
 
 func main() {
+	fmt.Println("Starting Perin client...")
 	const rabbitConnString = "amqp://guest:guest@localhost:5672/"
 
 	conn, err := amqp091.Dial(rabbitConnString)
@@ -27,19 +26,46 @@ func main() {
 		log.Fatalf("count not get username: %v", err)
 	}
 
-	_, _, err = pubsub.DeclareAndBind(
+	_, queue, err := pubsub.DeclareAndBind(
 		conn,
 		routing.ExchangePerilDirect,
-		fmt.Sprintf("%s.%s", routing.PauseKey, username),
+		routing.PauseKey+"."+username,
 		routing.PauseKey,
 		pubsub.SimpleQueueTransient,
 	)
 	if err != nil {
-		log.Fatalf("Failed to Declare and Bind channel and queue: %v", err)
+		log.Fatalf("could not subscribe to pause: %v", err)
 	}
+	fmt.Printf("Queue %v declared and bound!\n", queue.Name)
 
-	// wait for ctrl+c
-	signalChan := make(chan os.Signal, 1)
-	signal.Notify(signalChan, os.Interrupt)
-	<-signalChan
+	gs := gamelogic.NewGameState(username)
+
+	for {
+		words := gamelogic.GetInput()
+		if len(words) == 0 {
+			continue
+		}
+
+		switch words[0] {
+		case "spawn":
+			err = gs.CommandSpawn(words)
+		case "move":
+			_, err = gs.CommandMove(words)
+			fmt.Println("Move successful")
+		case "status":
+			gs.CommandStatus()
+		case "help":
+			gamelogic.PrintClientHelp()
+		case "spam":
+			fmt.Println("Spamming now allowed yet!")
+		case "quit":
+			gamelogic.PrintQuit()
+			return
+		default:
+			fmt.Println("Unknown command")
+		}
+		if err != nil {
+			fmt.Println(err)
+		}
+	}
 }
