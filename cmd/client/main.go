@@ -3,18 +3,19 @@ package main
 import (
 	"fmt"
 	"log"
+	"time"
 
 	"github.com/bootdotdev/learn-pub-sub-starter/internal/gamelogic"
 	"github.com/bootdotdev/learn-pub-sub-starter/internal/pubsub"
 	"github.com/bootdotdev/learn-pub-sub-starter/internal/routing"
-	"github.com/rabbitmq/amqp091-go"
+	amqp "github.com/rabbitmq/amqp091-go"
 )
 
 func main() {
 	fmt.Println("Starting Perin client...")
 	const rabbitConnString = "amqp://guest:guest@localhost:5672/"
 
-	conn, err := amqp091.Dial(rabbitConnString)
+	conn, err := amqp.Dial(rabbitConnString)
 	if err != nil {
 		log.Fatalf("could not connect to RabbitMQ: %v", err)
 	}
@@ -53,7 +54,7 @@ func main() {
 		routing.WarRecognitionsPrefix,
 		routing.WarRecognitionsPrefix+".*",
 		pubsub.SimpleQueueDurable,
-		handlerWar(gs),
+		handlerWar(gs, publishCh),
 	)
 	if err != nil {
 		log.Fatalf("could not subscribe to war declarations: %v", err)
@@ -116,4 +117,17 @@ func main() {
 			fmt.Println("Unknown command")
 		}
 	}
+}
+
+func PublishGameLog(publishCh *amqp.Channel, username, msg string) error {
+	return pubsub.PublishGob(
+		publishCh,
+		routing.ExchangePerilTopic,
+		routing.GameLogSlug+"."+username,
+		routing.GameLog{
+			Username:    username,
+			CurrentTime: time.Now(),
+			Message:     msg,
+		},
+	)
 }
