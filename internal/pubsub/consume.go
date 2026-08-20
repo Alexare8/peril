@@ -4,8 +4,11 @@ import (
 	"encoding/json"
 	"fmt"
 
+	"github.com/bootdotdev/learn-pub-sub-starter/internal/routing"
 	amqp "github.com/rabbitmq/amqp091-go"
 )
+
+type Acktype int
 
 type SimpleQueueType int
 
@@ -14,13 +17,19 @@ const (
 	SimpleQueueTransient
 )
 
+const (
+	Ack Acktype = iota
+	NackRequeue
+	NackDiscard
+)
+
 func SubscribeJSON[T any](
 	conn *amqp.Connection,
 	exchange,
 	queueName,
 	key string,
 	queueType SimpleQueueType,
-	handler func(T),
+	handler func(T) Acktype,
 ) error {
 	channel, queue, err := DeclareAndBind(conn, exchange, queueName, key, queueType)
 	if err != nil {
@@ -54,8 +63,17 @@ func SubscribeJSON[T any](
 				fmt.Printf("could not unmarshal message: %v\n", err)
 				continue
 			}
-			handler(target)
-			delivery.Ack(false)
+			switch handler(target) {
+			case Ack:
+				delivery.Ack(false)
+				fmt.Printf("Acknowledge: %s", delivery.RoutingKey)
+			case NackRequeue:
+				delivery.Nack(false, true)
+				fmt.Printf("Negative Acknowledge Requeue: %s", delivery.RoutingKey)
+			case NackDiscard:
+				delivery.Nack(false, false)
+				fmt.Printf("Negative Acknowledge Discard: %s", delivery.RoutingKey)
+			}
 		}
 	}()
 
@@ -80,7 +98,9 @@ func DeclareAndBind(
 		queueType == SimpleQueueTransient, // delete when unused
 		queueType == SimpleQueueTransient, // exclusive
 		false,                             // no-wait
-		nil,                               // args
+		amqp.Table{
+			"x-dead-letter-exchange": routing.ExchangePerilDeadLetter,
+		},
 	)
 	if err != nil {
 		return nil, amqp.Queue{}, fmt.Errorf("could not declare queue: %v", err)
