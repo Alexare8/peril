@@ -84,9 +84,13 @@ func subscribe[T any](
 ) error {
 	channel, queue, err := DeclareAndBind(conn, exchange, queueName, key, queueType)
 	if err != nil {
-		return fmt.Errorf("could not declare and bind queue: %v", err)
+		return fmt.Errorf("could not declare and bind queue: %v\n", err)
 	}
 
+	err = channel.Qos(10, 0, false)
+	if err != nil {
+		return fmt.Errorf("count not do somthing idk: %v\n", err)
+	}
 	messages, err := channel.Consume(
 		queue.Name, // queue
 		"",         // consumer
@@ -97,7 +101,7 @@ func subscribe[T any](
 		nil,        // args
 	)
 	if err != nil {
-		return fmt.Errorf("could not consume messages: %v", err)
+		return fmt.Errorf("could not consume messages: %v\n", err)
 	}
 
 	go func() {
